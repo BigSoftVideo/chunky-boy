@@ -7,11 +7,19 @@ When using the library only the `chunky-boy.js`, `chunky-boy.worker.js`, and `ch
 
 ## Building
 
-The library depends on libav and was compiled to WebAssembly with emscripten `v2.0.8`. Note that this library is intended to be compiled on Linux.
+The library depends on libav and was compiled to WebAssembly with emscripten `v1.40.1`. Note that this library is intended to be compiled on Linux.
 
-To build the library make sure the terminal is in an emscripten environment (see https://emscripten.org/docs/getting_started/downloads.html). At the time of writing this can be achieved by executing `source ./emsdk_env.sh` in the emscripten folder. Once that's done, navigate to the `chunky-boy` folder using the same terminal and execute `./build.sh`. This might return with "Permission denied" in this case run `chmod +x build.sh` and then try again.
+To build the library make sure the terminal is in an emscripten environment (see https://emscripten.org/docs/getting_started/downloads.html). At the time of writing this can be achieved by executing the following in the emscripten folder.
+```
+source ./emsdk_env.sh
+```
+Once that's done, navigate to the `chunky-boy` folder using the same terminal and execute
+```
+./build.sh
+```
+This might return with "Permission denied" in this case run `chmod +x build.sh` and then try again.
 
-If libav is needed to be rebuilt then read 'building libav for wasm.txt'.
+If libav is needed to be rebuilt then read `building libav for wasm.txt`.
 
 ## License
 

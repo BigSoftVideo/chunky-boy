@@ -1,1 +1,1 @@
-#define LIBAV_VERSION "v12.3"
+#define LIBAV_VERSION "9efa64d"
