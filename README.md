@@ -7,7 +7,7 @@ When using the library only the `chunky-boy.js`, `chunky-boy.worker.js`, and `ch
 
 ## Building
 
-The library depends on libav and was compiled to WebAssembly with emscripten `v1.39.20`. Note that this library is intended to be compiled on Linux.
+The library depends on libav and was compiled to WebAssembly with emscripten `v2.0.8`. Note that this library is intended to be compiled on Linux.
 
 To build the library make sure the terminal is in an emscripten environment (see https://emscripten.org/docs/getting_started/downloads.html). At the time of writing this can be achieved by executing the following in the emscripten folder.
 ```

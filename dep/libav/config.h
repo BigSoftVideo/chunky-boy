@@ -4,7 +4,7 @@
 #define LIBAV_CONFIGURATION "--arch=x86_32 --cpu=generic --cc=emcc --extra-cflags=-m32 --extra-ldflags=-m32 --disable-shared --disable-doc --disable-inline-asm --disable-asm --prefix=/home/artur/software/chunky-boy/dep/libav/build/js/root"
 #define LIBAV_LICENSE "LGPL version 2.1 or later"
 #define AVCONV_DATADIR "/home/artur/software/chunky-boy/dep/libav/build/js/root/share/avconv"
-#define CC_IDENT "emcc (Emscripten gcc/clang-like replacement) 1.39.20 (45d43807ec2b74673acc703dd1145ac0d2d1040a)"
+#define CC_IDENT "emcc (Emscripten gcc/clang-like replacement) 2.0.8 (d059fd603d0b45b584f634dc2365bc9e9a6ec1dd)"
 #define restrict restrict
 #define EXTERN_PREFIX ""
 #define EXTERN_ASM 

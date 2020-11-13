@@ -46,22 +46,14 @@ Module['instantiateWasm'] = function(info, receiveInstance) {
   return instance.exports;
 };
 
-
 this.onmessage = function(e) {
   try {
     if (e.data.cmd === 'load') { // Preload command that is called once per worker to parse and load the Emscripten code.
-
-
-      // Initialize the global "process"-wide fields:
-      Module['DYNAMIC_BASE'] = e.data.DYNAMIC_BASE;
-
-      Module['DYNAMICTOP_PTR'] = e.data.DYNAMICTOP_PTR;
 
       // Module and memory were sent from main thread
       Module['wasmModule'] = e.data.wasmModule;
 
       Module['wasmMemory'] = e.data.wasmMemory;
-
 
       Module['buffer'] = Module['wasmMemory'].buffer;
 
@@ -74,11 +66,11 @@ this.onmessage = function(e) {
         importScripts(objectUrl);
         URL.revokeObjectURL(objectUrl);
       }
-      chunky_boy(Module).then(function (instance) {
-        Module = instance;
-        postMessage({ 'cmd': 'loaded' });
-      });
 
+      // MINIMAL_RUNTIME always compiled Wasm (&Wasm2JS) asynchronously, even in pthreads. But
+      // regular runtime and asm.js are loaded synchronously, so in those cases
+      // we are now loaded, and can post back to main thread.
+      postMessage({ 'cmd': 'loaded' });
 
     } else if (e.data.cmd === 'objectTransfer') {
       Module['PThread'].receiveObjectTransfer(e.data);
@@ -127,7 +119,7 @@ this.onmessage = function(e) {
         // enable that to work. If you find the following line to crash, either change the signature
         // to "proper" void *ThreadMain(void *arg) form, or try linking with the Emscripten linker
         // flag -s EMULATE_FUNCTION_POINTER_CASTS=1 to add in emulation for this x86 ABI extension.
-        var result = Module['dynCall_ii'](e.data.start_routine, e.data.arg);
+        var result = Module['dynCall']('ii', e.data.start_routine, [e.data.arg]);
 
         Module['checkStackCookie']();
         // The thread might have finished without calling pthread_exit(). If so, then perform the exit operation ourselves.
@@ -168,7 +160,7 @@ this.onmessage = function(e) {
     }
   } catch(ex) {
     err('worker.js onmessage() captured an uncaught exception: ' + ex);
-    if (ex.stack) err(ex.stack);
+    if (ex && ex.stack) err(ex.stack);
     throw ex;
   }
 };

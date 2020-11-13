@@ -67,11 +67,7 @@ Let make finish its thing
 > emranlib libavdevice.a && emranlib libavfilter.a && emranlib libavformat.a && emranlib libavcodec.a && emranlib libavresample.a && emranlib libswscale.a && emranlib libavutil.a
 
 IMPORTANT:
-If you'd like to publish the freshly built artifacts, make sure to change the prefix in the files within `/home/artur/software/chunky-boy/dep/libav/build/js/root/lib/pkgconfig/` to 
-```
-prefix=dep/libav/build/js/root
-```
-So that it's relative instead of being absolute.
+If you'd like to publish the freshly built artifacts, make sure to run the `post_libav_build.sh` script from the chunky-boy root folder.
 
 ------------------
 
