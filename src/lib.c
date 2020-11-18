@@ -218,63 +218,91 @@ static int avio_read_packet(void* user_data, uint8_t* target_buf, int buf_size) 
     return bytes_read;
 }
 
+typedef struct ChunkyContext {
+    AVFormatContext* format_ctx;
+    AVIOContext* io_ctx;
+    uint8_t* avio_ctx_buffer;
+    AVCodec* codec;
+    AVCodecContext* codec_ctx;
+    AVPacket* avpacket;
+    AVFrame* frame;
+    AvReadUserData avread_user_data;
+    volatile int event_loop_started;
+    volatile int event_loop_done;
+    volatile int event_loop_stop_requested;
+    volatile int decode_start_requested;
+    volatile int decode_stop_requested;
+    volatile int reader_id;
+    volatile int metadata_handler_id;
+    volatile int audio_handler_id;
+    volatile int finished_handler_id;
+} ChunkyContext;
 
-AVFormatContext* format_ctx = NULL;
-AVIOContext* io_ctx = NULL;
-uint8_t* avio_ctx_buffer = NULL;
-AVCodec* codec = NULL;
-AVCodecContext* codec_ctx = NULL;
-AVPacket* avpacket = NULL;
-AVFrame* frame = NULL;
-AvReadUserData avread_user_data = {0};
-volatile int g_initialized = 0;
-volatile int g_event_loop_started = 0;
-volatile int g_requested_decode = 0;
-volatile int g_reader_id = -1;
-volatile int g_metadata_handler_id = -1;
-volatile int g_audio_handler_id = -1;
-volatile int g_finished_handler_id = -1;
-volatile int g_requested_stop = 0;
+static void init_chunky_context(ChunkyContext* target) {
+    target->format_ctx = NULL;
+    target->io_ctx = NULL;
+    target->avio_ctx_buffer = NULL;
+    target->codec = NULL;
+    target->codec_ctx = NULL;
 
-void decode_main(
-    int reader_id,
-    int metadata_handler_id,
-    int audio_handler_id,
-    int finished_handler_id
-) {
-    if (!g_initialized) {
+    target->avpacket = av_packet_alloc();
+    target->frame = av_frame_alloc();
+
+    target->avread_user_data.buffer_size = AVIO_READ_BUFFER_SIZE;
+    target->avread_user_data.buffer = malloc(AVIO_READ_BUFFER_SIZE);
+    if (!target->avread_user_data.buffer) {
+        printf("Could not allocate avio buffer (at line %d)\n", __LINE__);
+        exit(1);
+    }
+
+    target->event_loop_started = 0;
+    target->event_loop_done = 0;
+    target->event_loop_stop_requested = 0;
+    target->decode_start_requested = 0;
+    target->decode_stop_requested = 0;
+    target->reader_id = -1;
+    target->metadata_handler_id = -1;
+    target->audio_handler_id = -1;
+    target->finished_handler_id = -1;
+}
+
+//volatile int g_initialized = 0;
+
+void decode_main(ChunkyContext* ctx) {
+    int initialized = EM_ASM_INT({return Module.INITIALIZED ? 1 : 0;});
+    if (!initialized) {
         fprintf(stderr, "ERROR: chunky boy hasn't finished initializing yet.");
         return;
     }
     // IMPORTANT Reallocating the buffer because it gets freed with the `io_ctx`.
     // Fun fact: without this `avformat_open_input` just hangs without an error message.
-    avio_ctx_buffer = av_malloc(AVIO_READ_BUFFER_SIZE);
-    if (!avio_ctx_buffer) {
+    ctx->avio_ctx_buffer = av_malloc(AVIO_READ_BUFFER_SIZE);
+    if (!ctx->avio_ctx_buffer) {
         printf("Could not allocate context\n");
         exit(1);
     }
-    avread_user_data.reader_callback_id = reader_id;
-    format_ctx = avformat_alloc_context();
-    io_ctx = avio_alloc_context(avio_ctx_buffer, AVIO_READ_BUFFER_SIZE, 0, &avread_user_data, &avio_read_packet, NULL, NULL);
-    format_ctx->pb = io_ctx;
+    ctx->avread_user_data.reader_callback_id = ctx->reader_id;
+    ctx->format_ctx = avformat_alloc_context();
+    ctx->io_ctx = avio_alloc_context(ctx->avio_ctx_buffer, AVIO_READ_BUFFER_SIZE, 0, &ctx->avread_user_data, &avio_read_packet, NULL, NULL);
+    ctx->format_ctx->pb = ctx->io_ctx;
 
     emscripten_sleep(1);
-    if (g_requested_stop) { printf("reqested_stop was true at line %d. Stopping\n", __LINE__); goto cleanup; }
-    CHECK_AV_RETVAL(avformat_open_input(&format_ctx, NULL, NULL, NULL))
-    if (g_requested_stop) { printf("reqested_stop was true at line %d. Stopping\n", __LINE__); goto cleanup; }
-    CHECK_AV_RETVAL(avformat_find_stream_info(format_ctx, NULL))
+    if (ctx->decode_stop_requested) { printf("reqested_stop was true at line %d. Stopping\n", __LINE__); goto cleanup; }
+    CHECK_AV_RETVAL(avformat_open_input(&ctx->format_ctx, NULL, NULL, NULL))
+    if (ctx->decode_stop_requested) { printf("reqested_stop was true at line %d. Stopping\n", __LINE__); goto cleanup; }
+    CHECK_AV_RETVAL(avformat_find_stream_info(ctx->format_ctx, NULL))
 
     int target_stream_index = -1;
     
-    av_init_packet(avpacket);
-    avpacket->data = NULL;
-    avpacket->size = 0;
+    av_init_packet(ctx->avpacket);
+    ctx->avpacket->data = NULL;
+    ctx->avpacket->size = 0;
     for (;;) {
-        if (g_requested_stop) { printf("reqested_stop was true at line %d. Stopping\n", __LINE__); break; }
-        int retval = av_read_frame(format_ctx, avpacket);
+        if (ctx->decode_stop_requested) { printf("reqested_stop was true at line %d. Stopping\n", __LINE__); break; }
+        int retval = av_read_frame(ctx->format_ctx, ctx->avpacket);
         if (retval == AVERROR_EOF) break;
         else CHECK_AV_RETVAL(retval)
-        AVStream* stream = format_ctx->streams[avpacket->stream_index];
+        AVStream* stream = ctx->format_ctx->streams[ctx->avpacket->stream_index];
         AVCodecParameters* codecpar = stream->codecpar;
         // if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
         //     printf("-- VIDEO METADATA --\n");
@@ -287,47 +315,47 @@ void decode_main(
         // }
         if (target_stream_index == -1) {
             if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-                codec = avcodec_find_decoder(codecpar->codec_id);
-                codec_ctx = avcodec_alloc_context3(codec);
-                CHECK_AV_RETVAL(avcodec_parameters_to_context(codec_ctx, codecpar))
-                CHECK_AV_RETVAL(avcodec_open2(codec_ctx, codec, NULL))
+                ctx->codec = avcodec_find_decoder(codecpar->codec_id);
+                ctx->codec_ctx = avcodec_alloc_context3(ctx->codec);
+                CHECK_AV_RETVAL(avcodec_parameters_to_context(ctx->codec_ctx, codecpar))
+                CHECK_AV_RETVAL(avcodec_open2(ctx->codec_ctx, ctx->codec, NULL))
                 int sample_rate = codecpar->sample_rate;
-                double duration = format_ctx->duration / (double)AV_TIME_BASE;
+                double duration = ctx->format_ctx->duration / (double)AV_TIME_BASE;
                 //metadata_handler(duration, sample_rate);
-                call_js_metadata_handler(metadata_handler_id, duration, sample_rate);
-                target_stream_index = avpacket->stream_index;
+                call_js_metadata_handler(ctx->metadata_handler_id, duration, sample_rate);
+                target_stream_index = ctx->avpacket->stream_index;
             }
         }
-        if (target_stream_index == avpacket->stream_index) {
-            int retval = my_decode_func(codec_ctx, avpacket, frame, audio_handler_id);
+        if (target_stream_index == ctx->avpacket->stream_index) {
+            int retval = my_decode_func(ctx->codec_ctx, ctx->avpacket, ctx->frame, ctx->audio_handler_id);
             if (retval == AVERROR_EOF) {
                 break;
             } else if (retval != AVERROR(EAGAIN)) {
                 CHECK_AV_RETVAL(retval)
             }
         }
-        av_packet_unref(avpacket); // because we use `av_read_frame`
+        av_packet_unref(ctx->avpacket); // because we use `av_read_frame`
     }
 
     cleanup:
     // if (frame) av_frame_free(&frame);
     // if (avpacket) av_packet_free(&avpacket);
-    if (codec_ctx) {
-        avcodec_free_context(&codec_ctx);
-        codec_ctx = NULL;
+    if (ctx->codec_ctx) {
+        avcodec_free_context(&ctx->codec_ctx);
+        ctx->codec_ctx = NULL;
     }
     // // if (avio_ctx_buffer) av_free(avio_ctx_buffer);
-    if (io_ctx) { 
+    if (ctx->io_ctx) { 
         // This frees the avio_ctx_buffer
-        av_free(io_ctx);
-        io_ctx = NULL;
+        av_free(ctx->io_ctx);
+        ctx->io_ctx = NULL;
     }
-    if (format_ctx) {
-        avformat_free_context(format_ctx);
-        format_ctx = NULL;
+    if (ctx->format_ctx) {
+        avformat_free_context(ctx->format_ctx);
+        ctx->format_ctx = NULL;
     }
     // if (avread_user_data.buffer) free(avread_user_data.buffer);
-    call_js_finished_handler(finished_handler_id);
+    call_js_finished_handler(ctx->finished_handler_id);
 }
 
 /// Decodes a stream of bytes containing multimedia content provided by the `reader` callback.
@@ -339,47 +367,69 @@ void decode_main(
 /// `audio_handler`is a pointer to a callback function defined by the user, that handles
 /// raw samples of audio data that were decoded from the stream.
 void EMSCRIPTEN_KEEPALIVE decode_from_callback(
+    ChunkyContext* ctx,
     int reader_id,
     int metadata_handler_id,
     int audio_handler_id,
     int finished_handler_id
 ) {
-    if (!g_event_loop_started) {
-        fprintf(stderr, "`start_event_loop` must be incoked before this function");
+    if (!ctx->event_loop_started) {
+        fprintf(stderr, "ERROR: `start_event_loop` must be incoked before this function");
     }
-    if (g_requested_decode) {
-        fprintf(stderr, "Another decoding process is already running. Wait for that to finish before requesting a new decode");
+    if (ctx->decode_start_requested) {
+        fprintf(stderr, "ERROR: Another decoding process is already running. Wait for that to finish before requesting a new decode");
     }
 
-    g_reader_id = reader_id;
-    g_metadata_handler_id = metadata_handler_id;
-    g_audio_handler_id = audio_handler_id;
-    g_finished_handler_id = finished_handler_id;
-    g_requested_decode = 1;
+    ctx->reader_id = reader_id;
+    ctx->metadata_handler_id = metadata_handler_id;
+    ctx->audio_handler_id = audio_handler_id;
+    ctx->finished_handler_id = finished_handler_id;
+    ctx->decode_start_requested = 1;
 }
 
-void EMSCRIPTEN_KEEPALIVE stop_decoding() {
-    g_requested_stop = 1;
+void EMSCRIPTEN_KEEPALIVE stop_decoding(ChunkyContext* ctx) {
+    ctx->decode_stop_requested = 1;
 }
 
 /// Start this function right after initialization.
 /// I must be running before any call to decode_from_callback
-void EMSCRIPTEN_KEEPALIVE start_event_loop() {
-    g_event_loop_started = 1;
-    while (1) {
-        if (g_requested_decode) {
+void EMSCRIPTEN_KEEPALIVE start_event_loop(ChunkyContext* ctx) {
+    ctx->event_loop_started = 1;
+    while (!ctx->event_loop_stop_requested) {
+        if (ctx->decode_start_requested) {
             printf("setting reqested_stop to false\n");
-            g_requested_stop = 0;
-            decode_main(
-                g_reader_id,
-                g_metadata_handler_id,
-                g_audio_handler_id,
-                g_finished_handler_id
-            );
-            g_requested_decode = 0;
+            ctx->decode_stop_requested = 0;
+            decode_main(ctx);
+            ctx->decode_start_requested = 0;
         }
         emscripten_sleep(50);
     }
+    ctx->event_loop_done = 1;
+}
+
+/// Returns a pointer to the ChunyContext
+size_t EMSCRIPTEN_KEEPALIVE create_context() {
+    ChunkyContext* result = malloc(sizeof(ChunkyContext));
+    init_chunky_context(result);
+    return (size_t)result;
+}
+
+int EMSCRIPTEN_KEEPALIVE private_try_delete_context(ChunkyContext* ctx) {
+    ctx->decode_stop_requested = 1;
+    ctx->event_loop_stop_requested = 1;
+    if (ctx->event_loop_done) {
+        free(ctx);
+        return 1;
+    }
+    return 0;
+}
+
+void EMSCRIPTEN_KEEPALIVE private_initialize() {
+    printf("Initializing chunky-boy global state\n");
+    /* register demuxers */
+    av_register_all();
+    /* register all the codecs */
+    avcodec_register_all();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -471,22 +521,6 @@ static void my_decoding_test() {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 int main() {
-    /* register demuxers */
-    av_register_all();
-    /* register all the codecs */
-    avcodec_register_all();
-
-    avread_user_data.buffer_size = AVIO_READ_BUFFER_SIZE;
-    avread_user_data.buffer = malloc(AVIO_READ_BUFFER_SIZE);
-    if (!avread_user_data.buffer) {
-        printf("Could not allocate avio buffer (at line %d)\n", __LINE__);
-        exit(1);
-    }
-    avpacket = av_packet_alloc();
-    frame = av_frame_alloc();
-
-    g_initialized = 1;
-    EM_ASM(Module.onChunkyBoyInitialized(););
-
+    printf("Running chunky-boy main");
     return 0;
 }

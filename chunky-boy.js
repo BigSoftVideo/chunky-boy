@@ -18,8 +18,36 @@ var Module = typeof chunky_boy !== 'undefined' ? chunky_boy : {};
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
 
+let INITIALIZED = false;
+
 Module.userJsCallbacks = [];
 Module.onChunkyBoyInitialized = function() {};
+
+/** Returns false if the global state has already been initialized. Returns true otherwise */
+Module.initialize = async function(callback) {
+    const util = require('util');
+    const setImmediateAsync = util.promisify(setImmediate);
+    if (INITIALIZED) {
+        return false;
+    }
+    // This is defined in the C code.
+    while (Module._private_initialize === undefined) {
+        // Wait for the next iteration of the event loop
+        await setImmediateAsync();
+    }
+    Module._private_initialize();
+    INITIALIZED = true;
+    return true;
+}
+
+Module.delete_context = async function(ctx) {
+    const util = require('util');
+    const setImmediateAsync = util.promisify(setImmediate);
+    while (Module._private_try_delete_context(ctx) == 0) {
+        // Wait for the next iteration of the event loop
+        await setImmediateAsync();
+    }
+}
 
 
 
@@ -1210,9 +1238,9 @@ function updateGlobalBufferAndViews(buf) {
   Module['HEAPF64'] = HEAPF64 = new Float64Array(buf);
 }
 
-var STACK_BASE = 13786096,
+var STACK_BASE = 13786064,
     STACKTOP = STACK_BASE,
-    STACK_MAX = 8543216;
+    STACK_MAX = 8543184;
 
 assert(STACK_BASE % 16 === 0, 'stack must start aligned');
 
@@ -1743,9 +1771,9 @@ var tempI64;
 // === Body ===
 
 var ASM_CONSTS = {
-  2011: function() {Module.onChunkyBoyInitialized();},  
- 2301148: function() {throw 'Canceled!'},  
- 2301368: function($0, $1) {setTimeout(function() { _do_emscripten_dispatch_to_thread($0, $1); }, 0);}
+  1664: function() {return Module.INITIALIZED ? 1 : 0;},  
+ 2301212: function() {throw 'Canceled!'},  
+ 2301432: function($0, $1) {setTimeout(function() { _do_emscripten_dispatch_to_thread($0, $1); }, 0);}
 };
 function call_js_decoded_audio_handler(callback_id,samples,num_samples,num_channels){ const callback = Module.userJsCallbacks[callback_id]; callback(samples, num_samples, num_channels); }
 function call_js_finished_handler(callback_id){ const callback = Module.userJsCallbacks[callback_id]; callback(); }
@@ -9112,6 +9140,15 @@ var _stop_decoding = Module["_stop_decoding"] = createExportWrapper("stop_decodi
 var _start_event_loop = Module["_start_event_loop"] = createExportWrapper("start_event_loop");
 
 /** @type {function(...*):?} */
+var _create_context = Module["_create_context"] = createExportWrapper("create_context");
+
+/** @type {function(...*):?} */
+var _private_try_delete_context = Module["_private_try_delete_context"] = createExportWrapper("private_try_delete_context");
+
+/** @type {function(...*):?} */
+var _private_initialize = Module["_private_initialize"] = createExportWrapper("private_initialize");
+
+/** @type {function(...*):?} */
 var _main = Module["_main"] = createExportWrapper("main");
 
 /** @type {function(...*):?} */
@@ -9387,7 +9424,7 @@ var _asyncify_start_rewind = Module["_asyncify_start_rewind"] = createExportWrap
 /** @type {function(...*):?} */
 var _asyncify_stop_rewind = Module["_asyncify_stop_rewind"] = createExportWrapper("asyncify_stop_rewind");
 
-var _main_thread_futex = Module['_main_thread_futex'] = 8542604;
+var _main_thread_futex = Module['_main_thread_futex'] = 8542572;
 
 
 
