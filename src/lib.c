@@ -424,14 +424,6 @@ int EMSCRIPTEN_KEEPALIVE private_try_delete_context(ChunkyContext* ctx) {
     return 0;
 }
 
-void EMSCRIPTEN_KEEPALIVE private_initialize() {
-    printf("Initializing chunky-boy global state\n");
-    /* register demuxers */
-    av_register_all();
-    /* register all the codecs */
-    avcodec_register_all();
-}
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Test things
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -522,5 +514,18 @@ static void my_decoding_test() {
 
 int main() {
     printf("Running chunky-boy main");
+    /* register demuxers */
+    av_register_all();
+    /* register all the codecs */
+    avcodec_register_all();
+
+    EM_ASM({
+        Module.PRIVATE_INITIALIZED = true;
+        for (size_t i = 0; i < Module.PRIVATE_ON_INITIALIZED.length; i++) {
+            let cb = Module.PRIVATE_ON_INITIALIZED[i];
+            cb();
+        }
+    });
+
     return 0;
 }

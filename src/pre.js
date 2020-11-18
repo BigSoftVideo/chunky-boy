@@ -1,25 +1,28 @@
 
-let INITIALIZED = false;
 
 Module.userJsCallbacks = [];
-Module.onChunkyBoyInitialized = function() {};
 
-/** Returns false if the global state has already been initialized. Returns true otherwise */
-Module.initialize = async function(callback) {
-    const util = require('util');
-    const setImmediateAsync = util.promisify(setImmediate);
-    if (INITIALIZED) {
-        return false;
+//** This must not be modified by the user. */
+Module.PRIVATE_INITIALIZED = false;
+/** This must not be modified by the user. Use `whenInitialized`. */
+Module.PRIVATE_ON_INITIALIZED = [];
+
+/** If chunky boy is already initialized, the callback will be called on the
+ * next iteration of the JS event loop.
+ * 
+ * If chunky boy is not yet initialized, the callback will be called as soon
+ * as chunky boy finishes initialization.
+ * 
+ * It's valid to call this function multiple times. Every callback passed
+ * to this function will all get called when initialization is done.
+ */
+Module.whenInitialized = function(callback) {
+    if (Module.PRIVATE_INITIALIZED) {
+        setImmediate(callback);
+    } else {
+        Module.PRIVATE_ON_INITIALIZED.push(callback);
     }
-    // This is defined in the C code.
-    while (Module._private_initialize === undefined) {
-        // Wait for the next iteration of the event loop
-        await setImmediateAsync();
-    }
-    Module._private_initialize();
-    INITIALIZED = true;
-    return true;
-}
+};
 
 Module.delete_context = async function(ctx) {
     const util = require('util');

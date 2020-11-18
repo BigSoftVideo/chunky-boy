@@ -18,27 +18,30 @@ var Module = typeof chunky_boy !== 'undefined' ? chunky_boy : {};
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
 
-let INITIALIZED = false;
 
 Module.userJsCallbacks = [];
-Module.onChunkyBoyInitialized = function() {};
 
-/** Returns false if the global state has already been initialized. Returns true otherwise */
-Module.initialize = async function(callback) {
-    const util = require('util');
-    const setImmediateAsync = util.promisify(setImmediate);
-    if (INITIALIZED) {
-        return false;
+//** This must not be modified by the user. */
+Module.PRIVATE_INITIALIZED = false;
+/** This must not be modified by the user. Use `whenInitialized`. */
+Module.PRIVATE_ON_INITIALIZED = [];
+
+/** If chunky boy is already initialized, the callback will be called on the
+ * next iteration of the JS event loop.
+ * 
+ * If chunky boy is not yet initialized, the callback will be called as soon
+ * as chunky boy finishes initialization.
+ * 
+ * It's valid to call this function multiple times. Every callback passed
+ * to this function will all get called when initialization is done.
+ */
+Module.whenInitialized = function(callback) {
+    if (Module.PRIVATE_INITIALIZED) {
+        setImmediate(callback);
+    } else {
+        Module.PRIVATE_ON_INITIALIZED.push(callback);
     }
-    // This is defined in the C code.
-    while (Module._private_initialize === undefined) {
-        // Wait for the next iteration of the event loop
-        await setImmediateAsync();
-    }
-    Module._private_initialize();
-    INITIALIZED = true;
-    return true;
-}
+};
 
 Module.delete_context = async function(ctx) {
     const util = require('util');
@@ -1238,9 +1241,9 @@ function updateGlobalBufferAndViews(buf) {
   Module['HEAPF64'] = HEAPF64 = new Float64Array(buf);
 }
 
-var STACK_BASE = 13786064,
+var STACK_BASE = 13786192,
     STACKTOP = STACK_BASE,
-    STACK_MAX = 8543184;
+    STACK_MAX = 8543312;
 
 assert(STACK_BASE % 16 === 0, 'stack must start aligned');
 
@@ -1772,8 +1775,9 @@ var tempI64;
 
 var ASM_CONSTS = {
   1664: function() {return Module.INITIALIZED ? 1 : 0;},  
- 2301212: function() {throw 'Canceled!'},  
- 2301432: function($0, $1) {setTimeout(function() { _do_emscripten_dispatch_to_thread($0, $1); }, 0);}
+ 2041: function() {Module.PRIVATE_INITIALIZED = true; for (size_t i = 0; i < Module.PRIVATE_ON_INITIALIZED.length; i++) { let cb = Module.PRIVATE_ON_INITIALIZED[i]; cb(); }},  
+ 2301340: function() {throw 'Canceled!'},  
+ 2301560: function($0, $1) {setTimeout(function() { _do_emscripten_dispatch_to_thread($0, $1); }, 0);}
 };
 function call_js_decoded_audio_handler(callback_id,samples,num_samples,num_channels){ const callback = Module.userJsCallbacks[callback_id]; callback(samples, num_samples, num_channels); }
 function call_js_finished_handler(callback_id){ const callback = Module.userJsCallbacks[callback_id]; callback(); }
@@ -9146,9 +9150,6 @@ var _create_context = Module["_create_context"] = createExportWrapper("create_co
 var _private_try_delete_context = Module["_private_try_delete_context"] = createExportWrapper("private_try_delete_context");
 
 /** @type {function(...*):?} */
-var _private_initialize = Module["_private_initialize"] = createExportWrapper("private_initialize");
-
-/** @type {function(...*):?} */
 var _main = Module["_main"] = createExportWrapper("main");
 
 /** @type {function(...*):?} */
@@ -9424,7 +9425,7 @@ var _asyncify_start_rewind = Module["_asyncify_start_rewind"] = createExportWrap
 /** @type {function(...*):?} */
 var _asyncify_stop_rewind = Module["_asyncify_stop_rewind"] = createExportWrapper("asyncify_stop_rewind");
 
-var _main_thread_futex = Module['_main_thread_futex'] = 8542572;
+var _main_thread_futex = Module['_main_thread_futex'] = 8542700;
 
 
 
