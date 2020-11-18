@@ -521,7 +521,7 @@ int main() {
 
     EM_ASM({
         Module.PRIVATE_INITIALIZED = true;
-        for (size_t i = 0; i < Module.PRIVATE_ON_INITIALIZED.length; i++) {
+        for (let i = 0; i < Module.PRIVATE_ON_INITIALIZED.length; i++) {
             let cb = Module.PRIVATE_ON_INITIALIZED[i];
             cb();
         }

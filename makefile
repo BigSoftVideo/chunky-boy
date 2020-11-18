@@ -7,7 +7,7 @@ default:
 	gcc -g $(CFLAGS) -o chunky-boy.bin src/*.c $(LDFLAGS)
 
 wasm:
-	emcc -v -g -O2 $(CFLAGS) -L./dep -o chunky-boy.js \
+	emcc -v -g -O3 $(CFLAGS) -L./dep -o chunky-boy.js \
 		--pre-js src/pre.js \
 		-s EXPORT_NAME='"chunky_boy"' \
 		-s EXPORTED_FUNCTIONS='["_main", "_just_return_test", "_heap_test", "_decode_from_callback", "_stop_decoding", "_start_event_loop"]' \

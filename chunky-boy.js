@@ -1775,7 +1775,7 @@ var tempI64;
 
 var ASM_CONSTS = {
   1664: function() {return Module.INITIALIZED ? 1 : 0;},  
- 2041: function() {Module.PRIVATE_INITIALIZED = true; for (size_t i = 0; i < Module.PRIVATE_ON_INITIALIZED.length; i++) { let cb = Module.PRIVATE_ON_INITIALIZED[i]; cb(); }},  
+ 2041: function() {Module.PRIVATE_INITIALIZED = true; for (let i = 0; i < Module.PRIVATE_ON_INITIALIZED.length; i++) { let cb = Module.PRIVATE_ON_INITIALIZED[i]; cb(); }},  
  2301340: function() {throw 'Canceled!'},  
  2301560: function($0, $1) {setTimeout(function() { _do_emscripten_dispatch_to_thread($0, $1); }, 0);}
 };
