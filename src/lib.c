@@ -269,9 +269,9 @@ static void init_chunky_context(ChunkyContext* target) {
 //volatile int g_initialized = 0;
 
 void decode_main(ChunkyContext* ctx) {
-    int initialized = EM_ASM_INT({return Module.INITIALIZED ? 1 : 0;});
+    int initialized = EM_ASM_INT({return Module.PRIVATE_INITIALIZED ? 1 : 0;});
     if (!initialized) {
-        fprintf(stderr, "ERROR: chunky boy hasn't finished initializing yet.");
+        fprintf(stderr, "ERROR: chunky boy hasn't finished initializing yet.\n");
         return;
     }
     // IMPORTANT Reallocating the buffer because it gets freed with the `io_ctx`.
@@ -374,10 +374,10 @@ void EMSCRIPTEN_KEEPALIVE decode_from_callback(
     int finished_handler_id
 ) {
     if (!ctx->event_loop_started) {
-        fprintf(stderr, "ERROR: `start_event_loop` must be incoked before this function");
+        fprintf(stderr, "ERROR: `start_event_loop` must be incoked before this function\n");
     }
     if (ctx->decode_start_requested) {
-        fprintf(stderr, "ERROR: Another decoding process is already running. Wait for that to finish before requesting a new decode");
+        fprintf(stderr, "ERROR: Another decoding process is already running. Wait for that to finish before requesting a new decode\n");
     }
 
     ctx->reader_id = reader_id;
@@ -397,7 +397,7 @@ void EMSCRIPTEN_KEEPALIVE start_event_loop(ChunkyContext* ctx) {
     ctx->event_loop_started = 1;
     while (!ctx->event_loop_stop_requested) {
         if (ctx->decode_start_requested) {
-            printf("setting reqested_stop to false\n");
+            printf("setting decode_stop_requested to false\n");
             ctx->decode_stop_requested = 0;
             decode_main(ctx);
             ctx->decode_start_requested = 0;
@@ -451,7 +451,7 @@ static int test_file_read_callback(uint8_t* data, int length) {
     if (bytes_read > 0) return bytes_read;
     if (feof(input_file)) return 0;
     if (ferror(input_file)) {
-        perror("Error occured while trying to read the file");
+        perror("Error occured while trying to read the file\n");
         return -1;
     }
     // Don't ask me why but fread seems to return zero on the first read even though it clearly fills the data array with proper bytes.
@@ -513,7 +513,7 @@ static void my_decoding_test() {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 int main() {
-    printf("Running chunky-boy main");
+    printf("Running chunky-boy main\n");
     /* register demuxers */
     av_register_all();
     /* register all the codecs */
