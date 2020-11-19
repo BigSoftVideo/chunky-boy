@@ -37,12 +37,17 @@ int EMSCRIPTEN_KEEPALIVE heap_test(callback_with_heap_type* cb) {
 
 #include <libavformat/avformat.h>
 #include <libavformat/avio.h>
+#include <libavresample/avresample.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/common.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/mathematics.h>
 #include <libavutil/samplefmt.h>
+
+
+// Include custom items here
+#include "encoding.h"
 
 // #define AUDIO_INBUF_SIZE 20480
 // #define AUDIO_REFILL_THRESH 4096
@@ -218,6 +223,7 @@ static int avio_read_packet(void* user_data, uint8_t* target_buf, int buf_size) 
     return bytes_read;
 }
 
+
 typedef struct ChunkyContext {
     AVFormatContext* format_ctx;
     AVIOContext* io_ctx;
@@ -227,11 +233,13 @@ typedef struct ChunkyContext {
     AVPacket* avpacket;
     AVFrame* frame;
     AvReadUserData avread_user_data;
+    EncodingCtx* encoding;
     volatile int event_loop_started;
     volatile int event_loop_done;
     volatile int event_loop_stop_requested;
     volatile int decode_start_requested;
     volatile int decode_stop_requested;
+    volatile int encode_start_requested;
     volatile int reader_id;
     volatile int metadata_handler_id;
     volatile int audio_handler_id;
@@ -255,18 +263,29 @@ static void init_chunky_context(ChunkyContext* target) {
         exit(1);
     }
 
+    target->encoding = malloc(sizeof(EncodingCtx));
+    target->encoding->avio_ctx_buffer = NULL;
+    target->encoding->video_st = NULL;
+    // target->encoding->enc = NULL;
+    // target->encoding->enc_ctx = NULL;
+    // target->encoding->encoder_opts = NULL;
+    target->encoding->format_ctx = NULL;
+    target->encoding->io_ctx = NULL;
+    target->encoding->encode_stop_requested = 0;
+    target->encoding->writer_id = -1;
+
     target->event_loop_started = 0;
     target->event_loop_done = 0;
     target->event_loop_stop_requested = 0;
     target->decode_start_requested = 0;
     target->decode_stop_requested = 0;
+    target->encode_start_requested = 0;
     target->reader_id = -1;
     target->metadata_handler_id = -1;
     target->audio_handler_id = -1;
     target->finished_handler_id = -1;
 }
 
-//volatile int g_initialized = 0;
 
 void decode_main(ChunkyContext* ctx) {
     int initialized = EM_ASM_INT({return Module.PRIVATE_INITIALIZED ? 1 : 0;});
@@ -358,6 +377,8 @@ void decode_main(ChunkyContext* ctx) {
     call_js_finished_handler(ctx->finished_handler_id);
 }
 
+
+
 /// Decodes a stream of bytes containing multimedia content provided by the `reader` callback.
 /// 
 /// `reader` is a pointer to a callback function defined by the user, that provides encoded stream data to be decoded.
@@ -387,8 +408,46 @@ void EMSCRIPTEN_KEEPALIVE decode_from_callback(
     ctx->decode_start_requested = 1;
 }
 
+void EMSCRIPTEN_KEEPALIVE encode_video_from_callback(
+    ChunkyContext* ctx,
+    int img_w,
+    int img_h,
+    int framerate,
+    int v_bitrate,
+    int audio_sample_rate, // samples per sec
+    int a_bitrate,
+    int writer_id,
+    int get_image_id,
+    int get_audio_id,
+    int finished_handler_id
+) {
+    //////////////////////////////
+    // SUPRESS WARNINGS
+    (void)img_w;
+    (void)img_h;
+    (void)framerate;
+    (void)v_bitrate;
+    (void)audio_sample_rate;
+    (void)a_bitrate;
+    (void)writer_id;
+    (void)get_image_id;
+    (void)get_audio_id;
+    //////////////////////////////
+
+    // c->width    = 352;
+    // c->height   = 288;
+
+    ctx->encoding->writer_id = writer_id;
+    ctx->encoding->finished_handler_id = finished_handler_id;
+    ctx->encode_start_requested = 1;
+}
+
 void EMSCRIPTEN_KEEPALIVE stop_decoding(ChunkyContext* ctx) {
     ctx->decode_stop_requested = 1;
+}
+
+void EMSCRIPTEN_KEEPALIVE stop_encoding(ChunkyContext* ctx) {
+    ctx->encoding->encode_stop_requested = 1;
 }
 
 /// Start this function right after initialization.
@@ -397,10 +456,16 @@ void EMSCRIPTEN_KEEPALIVE start_event_loop(ChunkyContext* ctx) {
     ctx->event_loop_started = 1;
     while (!ctx->event_loop_stop_requested) {
         if (ctx->decode_start_requested) {
-            printf("setting decode_stop_requested to false\n");
+            printf("Starting decode\n");
             ctx->decode_stop_requested = 0;
             decode_main(ctx);
             ctx->decode_start_requested = 0;
+        }
+        if (ctx->encode_start_requested) {
+            printf("Starting encode\n");
+            ctx->encoding->encode_stop_requested = 0;
+            encode_main(ctx->encoding);
+            ctx->encode_start_requested = 0;
         }
         emscripten_sleep(50);
     }
@@ -418,6 +483,7 @@ int EMSCRIPTEN_KEEPALIVE private_try_delete_context(ChunkyContext* ctx) {
     ctx->decode_stop_requested = 1;
     ctx->event_loop_stop_requested = 1;
     if (ctx->event_loop_done) {
+        free(ctx->encoding);
         free(ctx);
         return 1;
     }
@@ -511,6 +577,232 @@ static void my_decoding_test() {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Supported encoders - `name` field
+// Includes video, image, audio, subtitle
+// --
+// mpeg1video
+// mpeg2video
+// h261
+// h263
+// rv10
+// rv20
+// mjpeg
+// ljpeg
+// jpegls
+// mpeg4
+// rawvideo
+// msmpeg4v2
+// msmpeg4
+// wmv1
+// wmv2
+// h263p
+// flv
+// svq1
+// dvvideo
+// huffyuv
+// asv1
+// asv2
+// ffv1
+// cljr
+// roqvideo
+// qtrle
+// ppm
+// pbm
+// pgm
+// pgmyuv
+// pam
+// ffvhuff
+// bmp
+// targa
+// tiff
+// gif
+// dnxhd
+// sgi
+// pcx
+// sunrast
+// v210
+// dpx
+// a64multi
+// a64multi5
+// prores
+// utvideo
+// v410
+// xwd
+// xbm
+// alias_pix
+// pcm_s16le
+// pcm_s16le
+// pcm_s16be
+// pcm_u16le
+// pcm_u16be
+// pcm_s8
+// pcm_u8
+// pcm_mulaw
+// pcm_alaw
+// pcm_s32le
+// pcm_s32be
+// pcm_u32le
+// pcm_u32be
+// pcm_s24le
+// pcm_s24be
+// pcm_u24le
+// pcm_u24be
+// pcm_s24daud
+// pcm_f32be
+// pcm_f32le
+// pcm_f64be
+// pcm_f64le
+// adpcm_ima_qt
+// adpcm_ima_wav
+// adpcm_ms
+// adpcm_adx
+// g726
+// adpcm_swf
+// adpcm_yamaha
+// g722
+// real_144
+// roq_dpcm
+// mp2
+// aac
+// ac3
+// vorbis
+// wmav1
+// wmav2
+// flac
+// alac
+// nellymoser
+// eac3
+// g723_1
+// comfortnoise
+// dvdsub
+// dvdsub
+// dvbsub
+// xsub
+// ass
+
+// Supported `AVOutputFormat`s - `name` field
+// These are also known as muxers / containers
+// --
+// a64
+// ac3
+// adts
+// adx
+// aiff
+// amr
+// asf
+// ass
+// asf_stream
+// au
+// avi
+// avm2
+// cavsvideo
+// crc
+// dash
+// daud
+// dirac
+// dnxhd
+// dts
+// dv
+// eac3
+// f4v
+// ffmetadata
+// filmstrip
+// flac
+// flv
+// framecrc
+// framemd5
+// g722
+// g723_1
+// gif
+// gxf
+// h261
+// h263
+// h264
+// hds
+// hevc
+// hls
+// ilbc
+// image2
+// image2pipe
+// ipod
+// ismv
+// ivf
+// latm
+// m4v
+// md5
+// matroska
+// matroska
+// mjpeg
+// mlp
+// mmf
+// mov
+// mp2
+// mp3
+// mp4
+// mpeg
+// vcd
+// mpeg1video
+// dvd
+// svcd
+// mpeg2video
+// vob
+// mpegts
+// mpjpeg
+// mxf
+// mxf_d10
+// null
+// nut
+// oga
+// ogg
+// oma
+// opus
+// alaw
+// mulaw
+// f64be
+// f64le
+// f32be
+// f32le
+// s32be
+// s32le
+// s24be
+// s24le
+// s16be
+// s16le
+// s8
+// u32be
+// u32le
+// u24be
+// u24le
+// u16be
+// u16le
+// u8
+// psp
+// rawvideo
+// rm
+// roq
+// rso
+// rtp
+// rtp_mpegts
+// rtsp
+// sap
+// segment
+// smjpeg
+// smoothstreaming
+// sox
+// spx
+// spdif
+// srt
+// swf
+// 3g2
+// 3gp
+// truehd
+// rcv
+// voc
+// wav
+// webm
+// wv
+// yuv4mpegpipe
 
 int main() {
     printf("Running chunky-boy main\n");

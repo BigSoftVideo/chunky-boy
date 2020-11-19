@@ -1,8 +1,8 @@
 
 .DEFAULT_GOAL := default
 
-CFLAGS := -Wno-gnu-zero-variadic-macro-arguments -Wno-deprecated-declarations -Wall -Wextra -Werror -pedantic
-LDFLAGS := $(shell PKG_CONFIG_PATH=$(EM_PKG_CONFIG_PATH):$(PKG_CONFIG_PATH) pkg-config --cflags --libs --static libavformat libavcodec)
+CFLAGS := -Wno-gnu-zero-variadic-macro-arguments -Wno-dollar-in-identifier-extension -Wno-deprecated-declarations -Wall -Wextra -Werror -pedantic
+LDFLAGS := $(shell PKG_CONFIG_PATH=$(EM_PKG_CONFIG_PATH):$(PKG_CONFIG_PATH) pkg-config --cflags --libs --static libavformat libavcodec libswscale)
 default:
 	gcc -g $(CFLAGS) -o chunky-boy.bin src/*.c $(LDFLAGS)
 
@@ -16,6 +16,6 @@ wasm:
 		-s TOTAL_MEMORY=209715200 \
 		-s ABORTING_MALLOC=0 \
 		-s ASYNCIFY=1 \
-		-s ASYNCIFY_IMPORTS='["call_js_reader", "emscripten_sleep", "emscripten_yield"]' \
+		-s ASYNCIFY_IMPORTS='["call_js_reader", "call_js_writer", "emscripten_sleep", "emscripten_yield"]' \
 		-s ASSERTIONS=2 \
 		src/*.c $(LDFLAGS)

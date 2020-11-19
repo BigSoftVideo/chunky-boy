@@ -1241,9 +1241,9 @@ function updateGlobalBufferAndViews(buf) {
   Module['HEAPF64'] = HEAPF64 = new Float64Array(buf);
 }
 
-var STACK_BASE = 13786192,
+var STACK_BASE = 13793584,
     STACKTOP = STACK_BASE,
-    STACK_MAX = 8543312;
+    STACK_MAX = 8550704;
 
 assert(STACK_BASE % 16 === 0, 'stack must start aligned');
 
@@ -1774,15 +1774,19 @@ var tempI64;
 // === Body ===
 
 var ASM_CONSTS = {
-  1664: function() {return Module.PRIVATE_INITIALIZED ? 1 : 0;},  
- 2028: function() {Module.PRIVATE_INITIALIZED = true; for (let i = 0; i < Module.PRIVATE_ON_INITIALIZED.length; i++) { let cb = Module.PRIVATE_ON_INITIALIZED[i]; cb(); }},  
- 2301340: function() {throw 'Canceled!'},  
- 2301560: function($0, $1) {setTimeout(function() { _do_emscripten_dispatch_to_thread($0, $1); }, 0);}
+  1425: function() {return Module.PRIVATE_INITIALIZED ? 1 : 0;},  
+ 1569: function($0, $1) {let callback = Module.userJsCallbacks[$0]; callback($1);},  
+ 2638: function() {return Module.PRIVATE_INITIALIZED ? 1 : 0;},  
+ 3002: function() {Module.PRIVATE_INITIALIZED = true; for (let i = 0; i < Module.PRIVATE_ON_INITIALIZED.length; i++) { let cb = Module.PRIVATE_ON_INITIALIZED[i]; cb(); }},  
+ 2308588: function() {throw 'Canceled!'},  
+ 2308808: function($0, $1) {setTimeout(function() { _do_emscripten_dispatch_to_thread($0, $1); }, 0);}
 };
 function call_js_decoded_audio_handler(callback_id,samples,num_samples,num_channels){ const callback = Module.userJsCallbacks[callback_id]; callback(samples, num_samples, num_channels); }
 function call_js_finished_handler(callback_id){ const callback = Module.userJsCallbacks[callback_id]; callback(); }
 function call_js_metadata_handler(callback_id,duration,sample_rate){ const callback = Module.userJsCallbacks[callback_id]; callback(duration, sample_rate); }
 function call_js_reader(callback_id,buffer,length){ return Asyncify.handleSleep(function(wakeUp) { const callback = Module.userJsCallbacks[callback_id]; callback(buffer, length).then(bytesRead => { wakeUp(bytesRead); }); }); }
+function call_js_seeker(callback_id,offset,whence){ const callback = Module.userJsCallbacks[callback_id]; return callback(offset, whence); }
+function call_js_writer(callback_id,buffer,length,position){ return Asyncify.handleSleep(function(wakeUp) { const callback = Module.userJsCallbacks[callback_id]; callback(buffer, length, position).then(bytesWritten => { wakeUp(bytesWritten); }); }); }
 function initPthreadsJS(){ PThread.initRuntime(); }
 
 
@@ -8789,7 +8793,7 @@ function initPthreadsJS(){ PThread.initRuntime(); }
         }
         return id;
       },instrumentWasmImports:function(imports) {
-        var ASYNCIFY_IMPORTS = ["env.call_js_reader","env.emscripten_sleep","env.emscripten_yield","env.invoke_*","env.__call_main","env.emscripten_sleep","env.emscripten_wget","env.emscripten_wget_data","env.emscripten_idb_load","env.emscripten_idb_store","env.emscripten_idb_delete","env.emscripten_idb_exists","env.emscripten_idb_load_blob","env.emscripten_idb_store_blob","env.SDL_Delay","env.emscripten_scan_registers","env.emscripten_lazy_load_code","env.emscripten_fiber_swap","wasi_snapshot_preview1.fd_sync","env.__wasi_fd_sync","env._emval_await"].map(function(x) {
+        var ASYNCIFY_IMPORTS = ["env.call_js_reader","env.call_js_writer","env.emscripten_sleep","env.emscripten_yield","env.invoke_*","env.__call_main","env.emscripten_sleep","env.emscripten_wget","env.emscripten_wget_data","env.emscripten_idb_load","env.emscripten_idb_store","env.emscripten_idb_delete","env.emscripten_idb_exists","env.emscripten_idb_load_blob","env.emscripten_idb_store_blob","env.SDL_Delay","env.emscripten_scan_registers","env.emscripten_lazy_load_code","env.emscripten_fiber_swap","wasi_snapshot_preview1.fd_sync","env.__wasi_fd_sync","env._emval_await"].map(function(x) {
           return x.split('.')[1];
         });
         for (var x in imports) {
@@ -9074,6 +9078,8 @@ var asmLibraryArg = {
   "call_js_finished_handler": call_js_finished_handler,
   "call_js_metadata_handler": call_js_metadata_handler,
   "call_js_reader": call_js_reader,
+  "call_js_seeker": call_js_seeker,
+  "call_js_writer": call_js_writer,
   "clock": _clock,
   "clock_gettime": _clock_gettime,
   "emscripten_asm_const_int": _emscripten_asm_const_int,
@@ -9123,13 +9129,13 @@ var asm = createWasm();
 var ___wasm_call_ctors = Module["___wasm_call_ctors"] = createExportWrapper("__wasm_call_ctors");
 
 /** @type {function(...*):?} */
+var _malloc = Module["_malloc"] = createExportWrapper("malloc");
+
+/** @type {function(...*):?} */
 var _just_return_test = Module["_just_return_test"] = createExportWrapper("just_return_test");
 
 /** @type {function(...*):?} */
 var _heap_test = Module["_heap_test"] = createExportWrapper("heap_test");
-
-/** @type {function(...*):?} */
-var _malloc = Module["_malloc"] = createExportWrapper("malloc");
 
 /** @type {function(...*):?} */
 var _free = Module["_free"] = createExportWrapper("free");
@@ -9138,7 +9144,13 @@ var _free = Module["_free"] = createExportWrapper("free");
 var _decode_from_callback = Module["_decode_from_callback"] = createExportWrapper("decode_from_callback");
 
 /** @type {function(...*):?} */
+var _encode_video_from_callback = Module["_encode_video_from_callback"] = createExportWrapper("encode_video_from_callback");
+
+/** @type {function(...*):?} */
 var _stop_decoding = Module["_stop_decoding"] = createExportWrapper("stop_decoding");
+
+/** @type {function(...*):?} */
+var _stop_encoding = Module["_stop_encoding"] = createExportWrapper("stop_encoding");
 
 /** @type {function(...*):?} */
 var _start_event_loop = Module["_start_event_loop"] = createExportWrapper("start_event_loop");
@@ -9264,6 +9276,9 @@ var ___set_stack_limits = Module["___set_stack_limits"] = createExportWrapper("_
 var dynCall_iiii = Module["dynCall_iiii"] = createExportWrapper("dynCall_iiii");
 
 /** @type {function(...*):?} */
+var dynCall_jiji = Module["dynCall_jiji"] = createExportWrapper("dynCall_jiji");
+
+/** @type {function(...*):?} */
 var dynCall_ii = Module["dynCall_ii"] = createExportWrapper("dynCall_ii");
 
 /** @type {function(...*):?} */
@@ -9277,9 +9292,6 @@ var dynCall_jiiij = Module["dynCall_jiiij"] = createExportWrapper("dynCall_jiiij
 
 /** @type {function(...*):?} */
 var dynCall_iiijjji = Module["dynCall_iiijjji"] = createExportWrapper("dynCall_iiijjji");
-
-/** @type {function(...*):?} */
-var dynCall_jiji = Module["dynCall_jiji"] = createExportWrapper("dynCall_jiji");
 
 /** @type {function(...*):?} */
 var dynCall_jiiji = Module["dynCall_jiiji"] = createExportWrapper("dynCall_jiiji");
@@ -9425,7 +9437,7 @@ var _asyncify_start_rewind = Module["_asyncify_start_rewind"] = createExportWrap
 /** @type {function(...*):?} */
 var _asyncify_stop_rewind = Module["_asyncify_stop_rewind"] = createExportWrapper("asyncify_stop_rewind");
 
-var _main_thread_futex = Module['_main_thread_futex'] = 8542700;
+var _main_thread_futex = Module['_main_thread_futex'] = 8550092;
 
 
 
