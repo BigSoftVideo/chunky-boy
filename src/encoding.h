@@ -43,6 +43,11 @@ typedef struct OutputStream {
 } OutputStream;
 
 typedef struct EncodingCtx {
+    int width; // Pixel width of the video
+    int height; // Pixel height of the video
+
+    int fps; // Image frames per second
+
     OutputStream* video_st; // May be null
     OutputStream* audio_st; // May be null
     AVFormatContext* format_ctx;
@@ -51,6 +56,9 @@ typedef struct EncodingCtx {
 
     int64_t file_curr_pos;
     int64_t file_end_pos;
+
+    //uint8_t* rgba_buffer;
+    //size_t rgba_buffer_len;
 
     /// Identifies the callback function that writes the encoded bytes to a file.
     /// An index into the JS `Module.userJsCallbacks` array.
@@ -74,6 +82,7 @@ typedef struct EncodingCtx {
     volatile int encode_stop_requested;
 } EncodingCtx;
 
+void init_encoding_context(EncodingCtx* ctx);
 int avio_write_packet(void* user_data, uint8_t* target_buf, int buf_size);
 int encode_main(EncodingCtx* ctx);
 

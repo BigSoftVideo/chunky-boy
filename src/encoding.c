@@ -9,6 +9,41 @@
 
 #include <libswscale/swscale.h>
 
+#define SOURCE_PIX_FORMAT AV_PIX_FMT_RGBA
+
+#ifdef __EMSCRIPTEN__
+EM_JS(int, call_js_writer, (int callback_id, uint8_t* buffer, int length, int64_t position), {
+    //const callback = Module.userJsCallbacks[callback_id];
+    //const retval = callback(buffer, length);
+    //return retval;
+    return Asyncify.handleSleep(function(wakeUp) {
+        const callback = Module.userJsCallbacks[callback_id];
+        callback(buffer, length, position).then(bytesWritten => {
+            wakeUp(bytesWritten);
+        });
+    });
+})
+
+EM_JS(int64_t, call_js_seeker, (int callback_id, int64_t offset, int whence), {
+    //const callback = Module.userJsCallbacks[callback_id];
+    //const retval = callback(buffer, length);
+    //return retval;
+    const callback = Module.userJsCallbacks[callback_id];
+    return callback(offset, whence);
+})
+
+EM_JS(void, call_js_encoding_metadata_handler, (int callback_id, double framerate, int sample_rate), {
+    const callback = Module.userJsCallbacks[callback_id];
+    callback(framerate, sample_rate);
+})
+
+EM_JS(int, call_js_encoding_get_image, (int callback_id, int64_t frame_id, uint8_t* buffer, size_t len, int linesize), {
+    const callback = Module.userJsCallbacks[callback_id];
+    return callback(frame_id, buffer, len, linesize);
+})
+#endif
+
+
 ////////////////////////////////////////////////////////////////////////////////////
 // STATIC FUNCTIONS (Only accessible in this file)
 ////////////////////////////////////////////////////////////////////////////////////
@@ -59,6 +94,7 @@ static int add_video_stream(
 
     c->gop_size      = 12; /* emit one intra frame every twelve frames at most */
     c->pix_fmt       = AV_PIX_FMT_YUV420P;
+    //c->pix_fmt       = AV_PIX_FMT_RGBA;
     if (c->codec_id == AV_CODEC_ID_MPEG2VIDEO) {
         /* just for testing, we also add B-frames */
         c->max_b_frames = 2;
@@ -94,7 +130,7 @@ static AVFrame *alloc_picture(enum AVPixelFormat pix_fmt, int width, int height)
     ret = av_frame_get_buffer(picture, 32);
     if (ret < 0) {
         fprintf(stderr, "Could not allocate frame data.\n");
-        exit(1);
+        return NULL;
     }
 
     return picture;
@@ -123,12 +159,12 @@ static void open_video(AVFormatContext *ctx, OutputStream *ost) {
         exit(1);
     }
 
-    /* If the output format is not YUV420P, then a temporary YUV420P
+    /* If the output format is not SOURCE_PIX_FORMAT, then a temporary
      * picture is needed too. It is then converted to the required
      * output format. */
     ost->tmp_frame = NULL;
-    if (c->pix_fmt != AV_PIX_FMT_YUV420P) {
-        ost->tmp_frame = alloc_picture(AV_PIX_FMT_YUV420P, c->width, c->height);
+    if (c->pix_fmt != SOURCE_PIX_FORMAT) {
+        ost->tmp_frame = alloc_picture(SOURCE_PIX_FORMAT, c->width, c->height);
         if (!ost->tmp_frame) {
             fprintf(stderr, "Could not allocate temporary picture\n");
             exit(1);
@@ -143,6 +179,7 @@ static void open_video(AVFormatContext *ctx, OutputStream *ost) {
     }
 }
 
+#if 0
 /* Prepare a dummy image. Returns 0 on sucess, returns 1 if there's no more frame to write, returns a negative number otherwise */
 static int fill_yuv_image(
     AVFrame *pict, int frame_index, int width, int height
@@ -178,38 +215,65 @@ static int fill_yuv_image(
     }
     return 0;
 }
+#endif
 
-static AVFrame *get_video_frame(OutputStream *ost)
-{
+static int fill_rgba_image(EncodingCtx* ctx, AVFrame *pict, int64_t frame_index) {
+    int ret;
+
+    /* when we pass a frame to the encoder, it may keep a reference to it
+     * internally;
+     * make sure we do not overwrite it here
+     */
+    ret = av_frame_make_writable(pict);
+    if (ret < 0) {
+        return ret;
+    }
+
+    _Static_assert(SOURCE_PIX_FORMAT == AV_PIX_FMT_RGBA, "If the source format is not RGBA be sure to update the `data_len` calculation.");
+    if (pict->format != AV_PIX_FMT_RGBA) {
+        fprintf(stderr, "FATAL ERROR: The pixel format was not as it was expected. The buffer size calculation may be incorrect\n");
+        return -1;
+    }
+    size_t data_len = pict->linesize[0] * pict->height * 4;
+    printf("Calling get image.\n");
+    return call_js_encoding_get_image(ctx->get_image_id, frame_index, pict->data[0], data_len, pict->linesize[0]);
+}
+
+static AVFrame *get_video_frame(EncodingCtx* ctx, OutputStream *ost) {
     AVCodecContext *c = ost->enc;
 
-    /* check if we want to generate more frames */
-    //if (av_compare_ts(ost->next_pts, c->time_base,
-    //                  STREAM_DURATION, (AVRational){ 1, 1 }) >= 0)
-    //    return NULL;
+    printf("Entered get video frame\n");
 
-    if (c->pix_fmt != AV_PIX_FMT_YUV420P) {
+    if (c->pix_fmt != SOURCE_PIX_FORMAT) {
         /* as we only generate a YUV420P picture, we must convert it
          * to the codec pixel format if needed */
         if (!ost->sws_ctx) {
-            ost->sws_ctx = sws_getContext(c->width, c->height,
-                                          AV_PIX_FMT_YUV420P,
-                                          c->width, c->height,
-                                          c->pix_fmt,
-                                          SWS_BICUBIC, NULL, NULL, NULL);
+            ost->sws_ctx = sws_getContext(
+                c->width, c->height, SOURCE_PIX_FORMAT,
+                c->width, c->height, c->pix_fmt,
+                SWS_BILINEAR, NULL, NULL, NULL
+            );
             if (!ost->sws_ctx) {
-                fprintf(stderr,
-                        "Cannot initialize the conversion context\n");
+                fprintf(stderr, "Cannot initialize the conversion context\n");
                 exit(1);
             }
         }
-        if (0 != fill_yuv_image(ost->tmp_frame, ost->next_pts, c->width, c->height)) {
+        _Static_assert(SOURCE_PIX_FORMAT == AV_PIX_FMT_RGBA, "Please replace the `fill_rgba_image` function if using a different target format");
+        if (0 != fill_rgba_image(ctx, ost->tmp_frame, ost->next_pts)) {
             return NULL;
         }
-        sws_scale(ost->sws_ctx, (const uint8_t* const*)ost->tmp_frame->data, ost->tmp_frame->linesize,
-                  0, c->height, ost->frame->data, ost->frame->linesize);
+
+        // TODO: Write a custom RGBA -> YUV420P converter function because apparently sws_scale cannot to that.
+        if (0 == sws_scale(
+            ost->sws_ctx, (const uint8_t* const*)ost->tmp_frame->data, ost->tmp_frame->linesize,
+            0, ost->tmp_frame->height, ost->frame->data, ost->frame->linesize
+        )) {
+            fprintf(stderr, "Failed to convert the frame contents\n");
+            return NULL;
+        }
     } else {
-        if (0 != fill_yuv_image(ost->frame, ost->next_pts, c->width, c->height)) {
+        _Static_assert(SOURCE_PIX_FORMAT == AV_PIX_FMT_RGBA, "Please replace the `fill_rgba_image` function if using a different target format");
+        if (0 != fill_rgba_image(ctx, ost->frame, ost->next_pts)) {
             return NULL;
         }
     }
@@ -223,7 +287,8 @@ static AVFrame *get_video_frame(OutputStream *ost)
  * encode one video frame and send it to the muxer
  * return -1 on fatal error, 1 when encoding is finished, 0 otherwise
  */
-static int write_video_frame(AVFormatContext *ctx, OutputStream *ost) {
+static int write_video_frame(EncodingCtx *ctx, OutputStream *ost) {
+    printf("Entered write_video_frame\n");
     int ret;
     AVCodecContext *c;
     AVFrame *frame;
@@ -232,7 +297,7 @@ static int write_video_frame(AVFormatContext *ctx, OutputStream *ost) {
 
     c = ost->enc;
 
-    frame = get_video_frame(ost);
+    frame = get_video_frame(ctx, ost);
 
     av_init_packet(&pkt);
 
@@ -248,7 +313,7 @@ static int write_video_frame(AVFormatContext *ctx, OutputStream *ost) {
         pkt.stream_index = ost->st->index;
 
         /* Write the compressed frame to the media file. */
-        ret = av_interleaved_write_frame(ctx, &pkt);
+        ret = av_interleaved_write_frame(ctx->format_ctx, &pkt);
     }
 
     if (ret != 0) {
@@ -279,28 +344,6 @@ static void close_stream(OutputStream *ost)
 // END OF STATIC FUNCTIONS
 ////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////
-
-#ifdef __EMSCRIPTEN__
-EM_JS(int, call_js_writer, (int callback_id, uint8_t* buffer, int length, int64_t position), {
-    //const callback = Module.userJsCallbacks[callback_id];
-    //const retval = callback(buffer, length);
-    //return retval;
-    return Asyncify.handleSleep(function(wakeUp) {
-        const callback = Module.userJsCallbacks[callback_id];
-        callback(buffer, length, position).then(bytesWritten => {
-            wakeUp(bytesWritten);
-        });
-    });
-})
-
-EM_JS(int64_t, call_js_seeker, (int callback_id, int64_t offset, int whence), {
-    //const callback = Module.userJsCallbacks[callback_id];
-    //const retval = callback(buffer, length);
-    //return retval;
-    const callback = Module.userJsCallbacks[callback_id];
-    return callback(offset, whence);
-})
-#endif
 
 int avio_write_packet(void* user_data, uint8_t* target_buf, int buf_size) {
     EncodingCtx* ctx = user_data;
@@ -372,7 +415,7 @@ int encode_main(EncodingCtx* ctx) {
         goto cleanup;
     }
     *(ctx->video_st) = (OutputStream){0};
-    if (0 != add_video_stream(ctx->video_st, ctx->format_ctx, format->video_codec, 352, 288, 24)) {
+    if (0 != add_video_stream(ctx->video_st, ctx->format_ctx, format->video_codec, ctx->width, ctx->height, ctx->fps)) {
         retval = 1;
         goto cleanup;
     }
@@ -394,7 +437,7 @@ int encode_main(EncodingCtx* ctx) {
         if (encode_video &&
             (!encode_audio || av_compare_ts(ctx->video_st->next_pts, ctx->video_st->enc->time_base,
                                             ctx->audio_st->next_pts, ctx->audio_st->enc->time_base) <= 0)) {
-            encode_video = !write_video_frame(ctx->format_ctx, ctx->video_st);
+            encode_video = !write_video_frame(ctx, ctx->video_st);
         } else {
             encode_audio = !process_audio_stream(ctx->format_ctx, ctx->audio_st);
         }
@@ -436,4 +479,18 @@ int encode_main(EncodingCtx* ctx) {
         callback($1);
     }, ctx->finished_handler_id, retval);
     return retval;
+}
+
+void init_encoding_context(EncodingCtx* ctx) {
+    ctx->avio_ctx_buffer = NULL;
+    ctx->video_st = NULL;
+    ctx->format_ctx = NULL;
+    ctx->io_ctx = NULL;
+    // ctx->rgba_buffer = NULL;
+    // ctx->rgba_buffer_len = 0;
+    ctx->encode_stop_requested = 0;
+    ctx->writer_id = -1;
+    ctx->width = 352;
+    ctx->height = 288;
+    ctx->fps = 24;
 }

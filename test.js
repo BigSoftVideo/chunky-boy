@@ -13,17 +13,19 @@ chunky_boy.whenInitialized(() => {
     let startMs = new Date().getTime();
     let outFile = fs.openSync("out.mp4", "w");
     setImmediate(() => {
+        let width = 1280;
+        let height = 720;
         setImmediate(() => {
             chunky_boy._encode_video_from_callback(
                 ctx,
-                1280,
-                720,
+                width,
+                height,
                 24,
                 5_000_000,
                 44100,
                 192_000,
                 writerCbId,
-                -1,
+                getImageCbId,
                 -1,
                 finishedCbId
             );
@@ -50,6 +52,17 @@ chunky_boy.whenInitialized(() => {
             fs.closeSync(outFile);
             console.log("Encoding and file write ms: " + (endMs - startMs));
             chunky_boy.delete_context(ctx).then(() => console.log("Done.")).catch((e) => console.error(e));
+        };
+        let getImageCbId = chunky_boy.userJsCallbacks.length;
+        chunky_boy.userJsCallbacks[getImageCbId] = function (frame_id, buffer, len, linesize) {
+            console.log("Called get image callback.");
+            let val = frame_id * 5;
+            if (val > 255) {
+                console.log("stopping at frame ", frame_id);
+                return 1;
+            }
+            chunky_boy.HEAP8.fill(val, buffer, buffer+len);
+            return 0; // Success
         };
         // let seekerCbId = chunky_boy.userJsCallbacks.length;
         // chunky_boy.userJsCallbacks[seekerCbId] = function (offset, whence) {

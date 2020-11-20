@@ -264,15 +264,7 @@ static void init_chunky_context(ChunkyContext* target) {
     }
 
     target->encoding = malloc(sizeof(EncodingCtx));
-    target->encoding->avio_ctx_buffer = NULL;
-    target->encoding->video_st = NULL;
-    // target->encoding->enc = NULL;
-    // target->encoding->enc_ctx = NULL;
-    // target->encoding->encoder_opts = NULL;
-    target->encoding->format_ctx = NULL;
-    target->encoding->io_ctx = NULL;
-    target->encoding->encode_stop_requested = 0;
-    target->encoding->writer_id = -1;
+    init_encoding_context(target->encoding);
 
     target->event_loop_started = 0;
     target->event_loop_done = 0;
@@ -434,10 +426,13 @@ void EMSCRIPTEN_KEEPALIVE encode_video_from_callback(
     (void)get_audio_id;
     //////////////////////////////
 
-    // c->width    = 352;
-    // c->height   = 288;
+    ctx->encoding->width = img_w;
+    ctx->encoding->height = img_h;
+    ctx->encoding->fps = framerate;
 
     ctx->encoding->writer_id = writer_id;
+    ctx->encoding->get_image_id = get_image_id;
+    ctx->encoding->get_audio_id = get_audio_id;
     ctx->encoding->finished_handler_id = finished_handler_id;
     ctx->encode_start_requested = 1;
 }
