@@ -1241,9 +1241,9 @@ function updateGlobalBufferAndViews(buf) {
   Module['HEAPF64'] = HEAPF64 = new Float64Array(buf);
 }
 
-var STACK_BASE = 13793584,
+var STACK_BASE = 13789168,
     STACKTOP = STACK_BASE,
-    STACK_MAX = 8550704;
+    STACK_MAX = 8546288;
 
 assert(STACK_BASE % 16 === 0, 'stack must start aligned');
 
@@ -1774,18 +1774,19 @@ var tempI64;
 // === Body ===
 
 var ASM_CONSTS = {
-  1425: function() {return Module.PRIVATE_INITIALIZED ? 1 : 0;},  
- 1569: function($0, $1) {let callback = Module.userJsCallbacks[$0]; callback($1);},  
- 2638: function() {return Module.PRIVATE_INITIALIZED ? 1 : 0;},  
- 3002: function() {Module.PRIVATE_INITIALIZED = true; for (let i = 0; i < Module.PRIVATE_ON_INITIALIZED.length; i++) { let cb = Module.PRIVATE_ON_INITIALIZED[i]; cb(); }},  
- 2308588: function() {throw 'Canceled!'},  
- 2308808: function($0, $1) {setTimeout(function() { _do_emscripten_dispatch_to_thread($0, $1); }, 0);}
+  1619: function() {return Module.PRIVATE_INITIALIZED ? 1 : 0;},  
+ 1792: function($0, $1) {let callback = Module.userJsCallbacks[$0]; callback($1);},  
+ 3270: function() {return Module.PRIVATE_INITIALIZED ? 1 : 0;},  
+ 3634: function() {Module.PRIVATE_INITIALIZED = true; for (let i = 0; i < Module.PRIVATE_ON_INITIALIZED.length; i++) { let cb = Module.PRIVATE_ON_INITIALIZED[i]; cb(); }},  
+ 2304316: function() {throw 'Canceled!'},  
+ 2304536: function($0, $1) {setTimeout(function() { _do_emscripten_dispatch_to_thread($0, $1); }, 0);}
 };
 function call_js_decoded_audio_handler(callback_id,samples,num_samples,num_channels){ const callback = Module.userJsCallbacks[callback_id]; callback(samples, num_samples, num_channels); }
+function call_js_encoding_get_image(callback_id,frame_id,buffer,len,linesize){ const callback = Module.userJsCallbacks[callback_id]; return callback(frame_id, buffer, len, linesize); }
+function call_js_encoding_metadata_handler(callback_id,framerate,sample_rate){ const callback = Module.userJsCallbacks[callback_id]; callback(framerate, sample_rate); }
 function call_js_finished_handler(callback_id){ const callback = Module.userJsCallbacks[callback_id]; callback(); }
 function call_js_metadata_handler(callback_id,duration,sample_rate){ const callback = Module.userJsCallbacks[callback_id]; callback(duration, sample_rate); }
 function call_js_reader(callback_id,buffer,length){ return Asyncify.handleSleep(function(wakeUp) { const callback = Module.userJsCallbacks[callback_id]; callback(buffer, length).then(bytesRead => { wakeUp(bytesRead); }); }); }
-function call_js_seeker(callback_id,offset,whence){ const callback = Module.userJsCallbacks[callback_id]; return callback(offset, whence); }
 function call_js_writer(callback_id,buffer,length,position){ return Asyncify.handleSleep(function(wakeUp) { const callback = Module.userJsCallbacks[callback_id]; callback(buffer, length, position).then(bytesWritten => { wakeUp(bytesWritten); }); }); }
 function initPthreadsJS(){ PThread.initRuntime(); }
 
@@ -9075,10 +9076,11 @@ var asmLibraryArg = {
   "_emscripten_notify_thread_queue": __emscripten_notify_thread_queue,
   "abort": _abort,
   "call_js_decoded_audio_handler": call_js_decoded_audio_handler,
+  "call_js_encoding_get_image": call_js_encoding_get_image,
+  "call_js_encoding_metadata_handler": call_js_encoding_metadata_handler,
   "call_js_finished_handler": call_js_finished_handler,
   "call_js_metadata_handler": call_js_metadata_handler,
   "call_js_reader": call_js_reader,
-  "call_js_seeker": call_js_seeker,
   "call_js_writer": call_js_writer,
   "clock": _clock,
   "clock_gettime": _clock_gettime,
@@ -9437,7 +9439,7 @@ var _asyncify_start_rewind = Module["_asyncify_start_rewind"] = createExportWrap
 /** @type {function(...*):?} */
 var _asyncify_stop_rewind = Module["_asyncify_stop_rewind"] = createExportWrapper("asyncify_stop_rewind");
 
-var _main_thread_futex = Module['_main_thread_futex'] = 8550092;
+var _main_thread_futex = Module['_main_thread_futex'] = 8545676;
 
 
 

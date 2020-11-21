@@ -24,20 +24,12 @@ EM_JS(int, call_js_writer, (int callback_id, uint8_t* buffer, int length, int64_
     });
 })
 
-EM_JS(int64_t, call_js_seeker, (int callback_id, int64_t offset, int whence), {
-    //const callback = Module.userJsCallbacks[callback_id];
-    //const retval = callback(buffer, length);
-    //return retval;
-    const callback = Module.userJsCallbacks[callback_id];
-    return callback(offset, whence);
-})
-
 EM_JS(void, call_js_encoding_metadata_handler, (int callback_id, double framerate, int sample_rate), {
     const callback = Module.userJsCallbacks[callback_id];
     callback(framerate, sample_rate);
 })
 
-EM_JS(int, call_js_encoding_get_image, (int callback_id, int64_t frame_id, uint8_t* buffer, size_t len, int linesize), {
+EM_JS(int, call_js_encoding_get_image, (int callback_id, int frame_id, uint8_t* buffer, size_t len, int linesize), {
     const callback = Module.userJsCallbacks[callback_id];
     return callback(frame_id, buffer, len, linesize);
 })
@@ -94,7 +86,6 @@ static int add_video_stream(
 
     c->gop_size      = 12; /* emit one intra frame every twelve frames at most */
     c->pix_fmt       = AV_PIX_FMT_YUV420P;
-    //c->pix_fmt       = AV_PIX_FMT_RGBA;
     if (c->codec_id == AV_CODEC_ID_MPEG2VIDEO) {
         /* just for testing, we also add B-frames */
         c->max_b_frames = 2;
@@ -234,39 +225,109 @@ static int fill_rgba_image(EncodingCtx* ctx, AVFrame *pict, int64_t frame_index)
         fprintf(stderr, "FATAL ERROR: The pixel format was not as it was expected. The buffer size calculation may be incorrect\n");
         return -1;
     }
-    size_t data_len = pict->linesize[0] * pict->height * 4;
-    printf("Calling get image.\n");
-    return call_js_encoding_get_image(ctx->get_image_id, frame_index, pict->data[0], data_len, pict->linesize[0]);
+    uint8_t* data = pict->data[0];
+    size_t data_len = pict->linesize[0] * pict->height;
+    return call_js_encoding_get_image(ctx->get_image_id, (int)frame_index, data, data_len, pict->linesize[0]);
+}
+
+/// Converts the source from `AV_PIX_FMT_RGBA` into `AV_PIX_FMT_YUV420P` which is written into the destination buffers
+/// Luma (Y') is calculated as per ITU-R BT.601 (Source: https://docs.microsoft.com/en-us/windows/win32/medfound/about-yuv-video)
+static int rgba_to_yuv(
+    size_t srcW, size_t srcH, enum AVPixelFormat srcFormat, const uint8_t* const* srcData, const int* srcStride,
+    size_t dstW, size_t dstH, enum AVPixelFormat dstFormat, uint8_t* const* dstData, const int* dstStride
+) {
+    // weights
+    const float R_w = 0.299;
+    const float G_w = 0.587;
+    const float B_w = 0.114;
+
+    if (srcFormat != AV_PIX_FMT_RGBA) {
+        fprintf(stderr, "The source image format is not as expected. At %s:%d\n", __FILE__, __LINE__);
+        return 1;
+    }
+    if (dstFormat != AV_PIX_FMT_YUV420P) {
+        fprintf(stderr, "The destination image format is not as expected. At %s:%d\n", __FILE__, __LINE__);
+        return 1;
+    }
+    if (srcW != dstW) {
+        fprintf(stderr, "The sourcce width must be equal to the destination width. At %s:%d\n", __FILE__, __LINE__);
+        return 1;
+    }
+    if (srcH != dstH) {
+        fprintf(stderr, "The sourcce height must be equal to the destination height. At %s:%d\n", __FILE__, __LINE__);
+        return 1;
+    }
+
+    // /* Y */
+    // for (size_t y = 0; y < srcH; y++)
+    //     for (size_t x = 0; x < srcW; x++)
+    //         dstData[0][y * dstStride[0] + x] = 16;
+
+    // /* Cb and Cr */
+    // for (size_t y = 0; y < srcH / 2; y++) {
+    //     for (size_t x = 0; x < srcW / 2; x++) {
+    //         dstData[1][y * dstStride[1] + x] = 128;
+    //         dstData[2][y * dstStride[2] + x] = 64;
+    //     }
+    // }
+    // return 0;
+
+    int srcStride0 = srcStride[0];
+    int dstYStride = dstStride[0];
+    int dstUStride = dstStride[1];
+    int dstVStride = dstStride[2];
+
+    for (size_t y = 0; y < srcH; y++) {
+        // a binary integer is even if and only if the lowermost bit is not 1
+        int even_y = !(y & 1);
+        for (size_t x = 0; x < srcW; x++) {
+            int even_x = !(x & 1);
+            size_t srcIndexBase = y*srcStride0 + x * 4;
+            float R = srcData[0][srcIndexBase + 0] / 255.0f;
+            float G = srcData[0][srcIndexBase + 1] / 255.0f;
+            float B = srcData[0][srcIndexBase + 2] / 255.0f;
+
+            float Y_a = R_w*R + G_w*G + B_w*B;
+            uint8_t Y = 16 + (uint8_t)(Y_a * 219);
+            dstData[0][y*dstYStride + x] = Y;
+
+            // In the target format the U and V planes have half the resolution.
+            if (even_y && even_x) {
+                float Pb = (0.5 / (1-B_w)) * (B - Y_a);
+                float Pr = (0.5 / (1-R_w)) * (R - Y_a);
+                uint8_t Cb = (uint8_t)(128 + 224 * Pb);
+                uint8_t Cr = (uint8_t)(128 + 224 * Pr);
+                dstData[1][(y/2)*dstUStride + x/2] = Cb;
+                dstData[2][(y/2)*dstVStride + x/2] = Cr;
+            }
+        }
+    }
+    return 0;
 }
 
 static AVFrame *get_video_frame(EncodingCtx* ctx, OutputStream *ost) {
     AVCodecContext *c = ost->enc;
 
-    printf("Entered get video frame\n");
+    /* when we pass a frame to the encoder, it may keep a reference to it
+     * internally;
+     * make sure we do not overwrite it here
+     */
+    int ret = av_frame_make_writable(ost->frame);
+    if (ret < 0) {
+        fprintf(stderr, "Could not make the target frame writeable\n");
+        return NULL;
+    }
 
     if (c->pix_fmt != SOURCE_PIX_FORMAT) {
-        /* as we only generate a YUV420P picture, we must convert it
-         * to the codec pixel format if needed */
-        if (!ost->sws_ctx) {
-            ost->sws_ctx = sws_getContext(
-                c->width, c->height, SOURCE_PIX_FORMAT,
-                c->width, c->height, c->pix_fmt,
-                SWS_BILINEAR, NULL, NULL, NULL
-            );
-            if (!ost->sws_ctx) {
-                fprintf(stderr, "Cannot initialize the conversion context\n");
-                exit(1);
-            }
-        }
         _Static_assert(SOURCE_PIX_FORMAT == AV_PIX_FMT_RGBA, "Please replace the `fill_rgba_image` function if using a different target format");
         if (0 != fill_rgba_image(ctx, ost->tmp_frame, ost->next_pts)) {
             return NULL;
         }
-
-        // TODO: Write a custom RGBA -> YUV420P converter function because apparently sws_scale cannot to that.
-        if (0 == sws_scale(
-            ost->sws_ctx, (const uint8_t* const*)ost->tmp_frame->data, ost->tmp_frame->linesize,
-            0, ost->tmp_frame->height, ost->frame->data, ost->frame->linesize
+        AVFrame* src = ost->tmp_frame;
+        AVFrame* dst = ost->frame;
+        if (0 != rgba_to_yuv(
+            src->width, src->height, src->format, (const uint8_t* const*)src->data, src->linesize,
+            dst->width, dst->height, dst->format, dst->data, dst->linesize
         )) {
             fprintf(stderr, "Failed to convert the frame contents\n");
             return NULL;
@@ -288,7 +349,6 @@ static AVFrame *get_video_frame(EncodingCtx* ctx, OutputStream *ost) {
  * return -1 on fatal error, 1 when encoding is finished, 0 otherwise
  */
 static int write_video_frame(EncodingCtx *ctx, OutputStream *ost) {
-    printf("Entered write_video_frame\n");
     int ret;
     AVCodecContext *c;
     AVFrame *frame;
@@ -416,6 +476,7 @@ int encode_main(EncodingCtx* ctx) {
     }
     *(ctx->video_st) = (OutputStream){0};
     if (0 != add_video_stream(ctx->video_st, ctx->format_ctx, format->video_codec, ctx->width, ctx->height, ctx->fps)) {
+        fprintf(stderr, "Could not add video stream.\n");
         retval = 1;
         goto cleanup;
     }
@@ -435,8 +496,13 @@ int encode_main(EncodingCtx* ctx) {
     while (!ctx->encode_stop_requested && (encode_video || encode_audio)) {
         /* select the stream to encode */
         if (encode_video &&
-            (!encode_audio || av_compare_ts(ctx->video_st->next_pts, ctx->video_st->enc->time_base,
-                                            ctx->audio_st->next_pts, ctx->audio_st->enc->time_base) <= 0)) {
+            (!encode_audio || av_compare_ts(
+                ctx->video_st->next_pts,
+                ctx->video_st->enc->time_base,
+                ctx->audio_st->next_pts,
+                ctx->audio_st->enc->time_base
+            ) <= 0)
+        ) {
             encode_video = !write_video_frame(ctx, ctx->video_st);
         } else {
             encode_audio = !process_audio_stream(ctx->format_ctx, ctx->audio_st);
