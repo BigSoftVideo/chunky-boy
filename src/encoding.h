@@ -48,6 +48,11 @@ typedef struct EncodingCtx {
 
     int fps; // Image frames per second
 
+    int video_bitrate; // in bits per second
+    int audio_bitrate; // in bits per second
+
+    int audio_sample_rate; // in Hertz
+
     OutputStream* video_st; // May be null
     OutputStream* audio_st; // May be null
     AVFormatContext* format_ctx;

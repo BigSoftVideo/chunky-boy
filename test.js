@@ -15,8 +15,8 @@ chunky_boy.whenInitialized(() => {
     setImmediate(() => {
         //let width = 1280;
         //let height = 720;
-        let width = 352;
-        let height = 288;
+        let width = 1280;
+        let height = 720;
         setImmediate(() => {
             chunky_boy._encode_video_from_callback(
                 ctx,
@@ -56,7 +56,7 @@ chunky_boy.whenInitialized(() => {
             chunky_boy.delete_context(ctx).then(() => console.log("Done.")).catch((e) => console.error(e));
         };
         let getImageCbId = chunky_boy.userJsCallbacks.length;
-        chunky_boy.userJsCallbacks[getImageCbId] = function (frame_id, buffer, len, linesize) {
+        chunky_boy.userJsCallbacks[getImageCbId] = async function (frame_id, buffer, len, linesize) {
             let val = frame_id * 2;
             if (val > 255) {
                 console.log("JS - stopping at frame ", frame_id);

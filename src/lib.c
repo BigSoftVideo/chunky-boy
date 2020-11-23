@@ -406,29 +406,19 @@ void EMSCRIPTEN_KEEPALIVE encode_video_from_callback(
     int img_h,
     int framerate,
     int v_bitrate,
-    int audio_sample_rate, // samples per sec
+    int audio_sample_rate, // samples per sec (aka Hertz)
     int a_bitrate,
     int writer_id,
     int get_image_id,
     int get_audio_id,
     int finished_handler_id
 ) {
-    //////////////////////////////
-    // SUPRESS WARNINGS
-    (void)img_w;
-    (void)img_h;
-    (void)framerate;
-    (void)v_bitrate;
-    (void)audio_sample_rate;
-    (void)a_bitrate;
-    (void)writer_id;
-    (void)get_image_id;
-    (void)get_audio_id;
-    //////////////////////////////
-
     ctx->encoding->width = img_w;
     ctx->encoding->height = img_h;
     ctx->encoding->fps = framerate;
+    ctx->encoding->video_bitrate = v_bitrate;
+    ctx->encoding->audio_bitrate = a_bitrate;
+    ctx->encoding->audio_sample_rate = audio_sample_rate;
 
     ctx->encoding->writer_id = writer_id;
     ctx->encoding->get_image_id = get_image_id;

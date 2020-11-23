@@ -1241,9 +1241,9 @@ function updateGlobalBufferAndViews(buf) {
   Module['HEAPF64'] = HEAPF64 = new Float64Array(buf);
 }
 
-var STACK_BASE = 13789168,
+var STACK_BASE = 13789264,
     STACKTOP = STACK_BASE,
-    STACK_MAX = 8546288;
+    STACK_MAX = 8546384;
 
 assert(STACK_BASE % 16 === 0, 'stack must start aligned');
 
@@ -1774,15 +1774,15 @@ var tempI64;
 // === Body ===
 
 var ASM_CONSTS = {
-  1619: function() {return Module.PRIVATE_INITIALIZED ? 1 : 0;},  
- 1792: function($0, $1) {let callback = Module.userJsCallbacks[$0]; callback($1);},  
- 3270: function() {return Module.PRIVATE_INITIALIZED ? 1 : 0;},  
- 3634: function() {Module.PRIVATE_INITIALIZED = true; for (let i = 0; i < Module.PRIVATE_ON_INITIALIZED.length; i++) { let cb = Module.PRIVATE_ON_INITIALIZED[i]; cb(); }},  
- 2304316: function() {throw 'Canceled!'},  
- 2304536: function($0, $1) {setTimeout(function() { _do_emscripten_dispatch_to_thread($0, $1); }, 0);}
+  1699: function() {return Module.PRIVATE_INITIALIZED ? 1 : 0;},  
+ 1872: function($0, $1) {let callback = Module.userJsCallbacks[$0]; callback($1);},  
+ 3350: function() {return Module.PRIVATE_INITIALIZED ? 1 : 0;},  
+ 3714: function() {Module.PRIVATE_INITIALIZED = true; for (let i = 0; i < Module.PRIVATE_ON_INITIALIZED.length; i++) { let cb = Module.PRIVATE_ON_INITIALIZED[i]; cb(); }},  
+ 2304412: function() {throw 'Canceled!'},  
+ 2304632: function($0, $1) {setTimeout(function() { _do_emscripten_dispatch_to_thread($0, $1); }, 0);}
 };
 function call_js_decoded_audio_handler(callback_id,samples,num_samples,num_channels){ const callback = Module.userJsCallbacks[callback_id]; callback(samples, num_samples, num_channels); }
-function call_js_encoding_get_image(callback_id,frame_id,buffer,len,linesize){ const callback = Module.userJsCallbacks[callback_id]; return callback(frame_id, buffer, len, linesize); }
+function call_js_encoding_get_image(callback_id,frame_id,buffer,len,linesize){ return Asyncify.handleSleep(function(wakeUp) { const callback = Module.userJsCallbacks[callback_id]; callback(frame_id, buffer, len, linesize).then(retval => { wakeUp(retval); }); }); }
 function call_js_encoding_metadata_handler(callback_id,framerate,sample_rate){ const callback = Module.userJsCallbacks[callback_id]; callback(framerate, sample_rate); }
 function call_js_finished_handler(callback_id){ const callback = Module.userJsCallbacks[callback_id]; callback(); }
 function call_js_metadata_handler(callback_id,duration,sample_rate){ const callback = Module.userJsCallbacks[callback_id]; callback(duration, sample_rate); }
@@ -8794,7 +8794,7 @@ function initPthreadsJS(){ PThread.initRuntime(); }
         }
         return id;
       },instrumentWasmImports:function(imports) {
-        var ASYNCIFY_IMPORTS = ["env.call_js_reader","env.call_js_writer","env.emscripten_sleep","env.emscripten_yield","env.invoke_*","env.__call_main","env.emscripten_sleep","env.emscripten_wget","env.emscripten_wget_data","env.emscripten_idb_load","env.emscripten_idb_store","env.emscripten_idb_delete","env.emscripten_idb_exists","env.emscripten_idb_load_blob","env.emscripten_idb_store_blob","env.SDL_Delay","env.emscripten_scan_registers","env.emscripten_lazy_load_code","env.emscripten_fiber_swap","wasi_snapshot_preview1.fd_sync","env.__wasi_fd_sync","env._emval_await"].map(function(x) {
+        var ASYNCIFY_IMPORTS = ["env.call_js_reader","env.call_js_writer","env.call_js_encoding_get_image","env.emscripten_sleep","env.emscripten_yield","env.invoke_*","env.__call_main","env.emscripten_sleep","env.emscripten_wget","env.emscripten_wget_data","env.emscripten_idb_load","env.emscripten_idb_store","env.emscripten_idb_delete","env.emscripten_idb_exists","env.emscripten_idb_load_blob","env.emscripten_idb_store_blob","env.SDL_Delay","env.emscripten_scan_registers","env.emscripten_lazy_load_code","env.emscripten_fiber_swap","wasi_snapshot_preview1.fd_sync","env.__wasi_fd_sync","env._emval_await"].map(function(x) {
           return x.split('.')[1];
         });
         for (var x in imports) {
@@ -9439,7 +9439,7 @@ var _asyncify_start_rewind = Module["_asyncify_start_rewind"] = createExportWrap
 /** @type {function(...*):?} */
 var _asyncify_stop_rewind = Module["_asyncify_stop_rewind"] = createExportWrapper("asyncify_stop_rewind");
 
-var _main_thread_futex = Module['_main_thread_futex'] = 8545676;
+var _main_thread_futex = Module['_main_thread_futex'] = 8545772;
 
 
 

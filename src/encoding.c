@@ -29,9 +29,15 @@ EM_JS(void, call_js_encoding_metadata_handler, (int callback_id, double framerat
     callback(framerate, sample_rate);
 })
 
+/// get_image is async because the JS code may need to wait for some rendering or similar process to finish before
+/// it's ready to hand over the pixel data.
 EM_JS(int, call_js_encoding_get_image, (int callback_id, int frame_id, uint8_t* buffer, size_t len, int linesize), {
-    const callback = Module.userJsCallbacks[callback_id];
-    return callback(frame_id, buffer, len, linesize);
+    return Asyncify.handleSleep(function(wakeUp) {
+        const callback = Module.userJsCallbacks[callback_id];
+        callback(frame_id, buffer, len, linesize).then(retval => {
+            wakeUp(retval);
+        });
+    });
 })
 #endif
 
@@ -47,7 +53,8 @@ static int add_video_stream(
     enum AVCodecID codec_id,
     int w,
     int h, 
-    int fps
+    int fps,
+    int bitrate
 ) {
     AVCodecContext *c;
     AVCodec *codec;
@@ -73,7 +80,7 @@ static int add_video_stream(
     ost->enc = c;
 
     /* Put sample parameters. */
-    c->bit_rate = 400000;
+    c->bit_rate = bitrate;
     /* Resolution must be a multiple of two. */
     c->width    = w;
     c->height   = h;
@@ -475,7 +482,9 @@ int encode_main(EncodingCtx* ctx) {
         goto cleanup;
     }
     *(ctx->video_st) = (OutputStream){0};
-    if (0 != add_video_stream(ctx->video_st, ctx->format_ctx, format->video_codec, ctx->width, ctx->height, ctx->fps)) {
+    if (0 != add_video_stream(
+        ctx->video_st, ctx->format_ctx, format->video_codec, ctx->width, ctx->height, ctx->fps, ctx->video_bitrate
+    )) {
         fprintf(stderr, "Could not add video stream.\n");
         retval = 1;
         goto cleanup;
@@ -488,7 +497,9 @@ int encode_main(EncodingCtx* ctx) {
     open_video(ctx->format_ctx, ctx->video_st);
     av_dump_format(ctx->format_ctx, 0, NULL, 1);
 
-    ctx->io_ctx = avio_alloc_context(ctx->avio_ctx_buffer, AVIO_WRITE_BUFFER_SIZE, 1, ctx, NULL, &avio_write_packet, &avio_seek_stream);
+    ctx->io_ctx = avio_alloc_context(
+        ctx->avio_ctx_buffer, AVIO_WRITE_BUFFER_SIZE, 1, ctx, NULL, &avio_write_packet, &avio_seek_stream
+    );
     ctx->format_ctx->pb = ctx->io_ctx;
 
     avformat_write_header(ctx->format_ctx, NULL);
@@ -559,4 +570,8 @@ void init_encoding_context(EncodingCtx* ctx) {
     ctx->width = 352;
     ctx->height = 288;
     ctx->fps = 24;
+
+    ctx->video_bitrate = 400000;
+    ctx->audio_bitrate = 192000;
+    ctx->audio_sample_rate = 44100;
 }

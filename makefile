@@ -16,6 +16,6 @@ wasm:
 		-s TOTAL_MEMORY=209715200 \
 		-s ABORTING_MALLOC=0 \
 		-s ASYNCIFY=1 \
-		-s ASYNCIFY_IMPORTS='["call_js_reader", "call_js_writer", "emscripten_sleep", "emscripten_yield"]' \
+		-s ASYNCIFY_IMPORTS='["call_js_reader", "call_js_writer", "call_js_encoding_get_image", "emscripten_sleep", "emscripten_yield"]' \
 		-s ASSERTIONS=2 \
 		src/*.c $(LDFLAGS)
