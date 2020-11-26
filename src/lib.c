@@ -404,7 +404,7 @@ void EMSCRIPTEN_KEEPALIVE encode_video_from_callback(
     ChunkyContext* ctx,
     int img_w,
     int img_h,
-    int framerate,
+    double framerate,
     int v_bitrate,
     int audio_sample_rate, // samples per sec (aka Hertz)
     int a_bitrate,

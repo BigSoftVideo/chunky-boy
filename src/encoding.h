@@ -46,7 +46,7 @@ typedef struct EncodingCtx {
     int width; // Pixel width of the video
     int height; // Pixel height of the video
 
-    int fps; // Image frames per second
+    double fps; // Image frames per second
 
     int video_bitrate; // in bits per second
     int audio_bitrate; // in bits per second

@@ -1,6 +1,8 @@
 
 #include "encoding.h"
 
+#include <math.h>
+
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #else
@@ -53,7 +55,7 @@ static int add_video_stream(
     enum AVCodecID codec_id,
     int w,
     int h, 
-    int fps,
+    double fps,
     int bitrate
 ) {
     AVCodecContext *c;
@@ -88,7 +90,8 @@ static int add_video_stream(
      * of which frame timestamps are represented. For fixed-fps content,
      * timebase should be 1/framerate and timestamp increments should be
      * identical to 1. */
-    ost->st->time_base = (AVRational){ 1, fps };
+    int fps_1000 = round(fps * 1000);
+    ost->st->time_base = (AVRational){ 1000, fps_1000 };
     c->time_base       = ost->st->time_base;
 
     c->gop_size      = 12; /* emit one intra frame every twelve frames at most */

@@ -22,7 +22,7 @@ chunky_boy.whenInitialized(() => {
                 ctx,
                 width,
                 height,
-                24,
+                29.97,
                 5_000_000,
                 44100,
                 192_000,
@@ -57,8 +57,8 @@ chunky_boy.whenInitialized(() => {
         };
         let getImageCbId = chunky_boy.userJsCallbacks.length;
         chunky_boy.userJsCallbacks[getImageCbId] = async function (frame_id, buffer, len, linesize) {
-            let val = frame_id * 2;
-            if (val > 255) {
+            let val = (frame_id * 2) % 256;
+            if (frame_id > 255) {
                 console.log("JS - stopping at frame ", frame_id);
                 return 1;
             }
